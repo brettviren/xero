@@ -33,6 +33,21 @@ Python package (detected from =pyproject.toml=; goes into =topics/T/venv=):
   xero build -t T
 #+end_src
 
+Override a package of the Spack view (automatic when the repo name is the
+Spack package name; otherwise name it):
+
+#+begin_src toml
+  [source.wct]
+  repo = "wire-cell-toolkit"
+  ref = "my-branch"
+  spack = "wire-cell-toolkit"
+#+end_src
+
+#+begin_src shell
+  xero sync -t T
+  cat topics/T/envs/E/view/.xero-view.json     # what the view leaves out
+#+end_src
+
 Read-only reference (=refs/=, never built):
 
 #+begin_src shell

@@ -10,8 +10,8 @@ After a successful build a builder writes ``envs/<e>/build/.xero-stamp.json``:
      "packages": {name: {...}}}       per-package source state
 
 Comparing a fresh fingerprint with the stamp says what is stale and why.  A
-changed "config" means reconfigure; a changed spack.lock or profile means the
-build dir must be wiped (sub-build caches pin paths into the old view).
+changed "config" means reconfigure; a changed spack.lock, profile or compiler
+means the build dir must be wiped (CMake caches pin view paths and compilers).
 """
 
 from __future__ import annotations
@@ -24,6 +24,10 @@ from . import gitops
 from .util import sha256_file, sha256_text
 
 STAMP = ".xero-stamp.json"
+
+# Env-level inputs whose change invalidates whole build dirs (CMake caches pin
+# view paths and compilers).
+WIPE_KEYS = ("lock", "profile", "compilers", "view")
 
 
 def _dirty_hash(path: Path) -> str | None:
@@ -103,13 +107,13 @@ def compare(stamp: dict | None, config: dict, packages: dict) -> dict:
     old_cfg = stamp.get("config", {})
     reasons = []
     state = "ok"
-    for key in ("lock", "profile"):
+    for key in WIPE_KEYS:
         if old_cfg.get(key) != config.get(key):
-            reasons.append(f"Spack env {key} changed")
+            reasons.append(f"Spack env {key} changed" if key in ("lock", "profile") else f"{key} changed")
             state = "wipe"
     if state != "wipe":
         for key in sorted(set(old_cfg) | set(config)):
-            if key in ("lock", "profile"):
+            if key in WIPE_KEYS:
                 continue
             if old_cfg.get(key) != config.get(key):
                 reasons.append(f"{key} changed")

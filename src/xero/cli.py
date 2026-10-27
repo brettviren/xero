@@ -404,6 +404,7 @@ def topic_rm(ctx, topic_name, ref_only, name) -> None:
         path.unlink()
     elif path.exists():
         say(f"left {path} in place (not a symlink); remove it yourself if wanted")
+    _print_notes(sync.sync(Topic(area, t.name)))
 
 
 @topic.command("env-add")
@@ -430,6 +431,7 @@ def topic_env_rm(ctx, topic_name, env_name) -> None:
     t.remove_env(env_name)
     if t.env_root(env_name).exists():
         say(f"left {t.env_root(env_name)} in place; remove it yourself if wanted")
+    _print_notes(sync.sync(Topic(area, t.name)))
 
 
 # --- sync / status / check / gc --------------------------------------------------------

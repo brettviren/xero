@@ -7,9 +7,15 @@ For stacks (eg art/LArSoft) whose builds need =spack build-env=.  In
   [envs.wcls]
   profile = "spack-build-env"
   spec = "larwirecell"
-  cc = "gcc"
-  cxx = "g++"
   cxx_standard = "17"
+#+end_src
+
+Builds use the real compilers behind Spack's compiler wrapper, so a topic's own
+install of a package (eg WCT) wins over the Spack store's.  To keep the
+wrapper (it injects -I/-L for all of the spec's deps):
+
+#+begin_src toml
+  compiler_wrapper = true
 #+end_src
 
 Capture (fresh from Spack, or import an existing dump):

@@ -15,7 +15,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import gitops
+from . import gitops, view
 from .topic import Entry, Topic
 from .util import relsymlink, run
 
@@ -186,7 +186,11 @@ class Syncer:
         root = t.env_root(env)
         self.dir(root)
         self.link(root / "source", t.source_dir)
-        self.link(root / "view", self.area.env_dir(env) / "view")
+        msg = view.ensure(t, env, self.fix) if root.is_dir() else None
+        if msg:
+            self.note("fix", root / "view", msg)
+        if not view.wanted(t, env):
+            self.link(root / "view", self.area.env_dir(env) / "view")
         for sub in ("build", "install", "run"):
             self.dir(t.env_root(env) / sub)
         envrc = t.run_dir(env) / ".envrc"

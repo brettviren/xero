@@ -277,3 +277,122 @@ def test_bare_invocation_is_help(xero, upstreams, monkeypatch):
     monkeypatch.setenv("PWD", str(t.env_root("fake")))
     res = invoke("status")
     assert "Usage:" not in res.output and "topic t1" in res.output
+
+
+@pytest.mark.skipif(not shutil.which("cmake"), reason="needs cmake")
+@pytest.mark.parametrize("builder", ["superbuild", "cmake-each"])
+def test_view_shadowed_by_added_source(xero, upstreams, builder):
+    """A package first configured against the view's alpha must switch to the
+    topic's alpha once alpha is added as a source (stale CMake cache)."""
+    invoke, area = xero
+    view_cfg = area.view("fake") / "lib" / "cmake" / "alpha"
+    view_cfg.mkdir(parents=True)
+    (view_cfg / "alphaConfig.cmake").write_text("set(alpha_FOUND TRUE)\n")
+    for n in ("alpha", "beta"):
+        invoke("repo", "add", n, upstreams[n])
+    t = _topic(invoke, area, "t1", "--builder", builder)
+    invoke("topic", "add", "-t", "t1", "beta", "main")
+    invoke("build", "-t", "t1")
+    b = builders.get(Topic(area, "t1"), "fake")
+    [pkg] = b.ctx.packages()
+    assert f"alpha_DIR:PATH={view_cfg}" in b.package_cache(pkg).read_text()
+
+    invoke("topic", "add", "-t", "t1", "alpha", "main")
+    invoke("build", "-t", "t1")
+    b = builders.get(Topic(area, "t1"), "fake")
+    beta = [p for p in b.ctx.packages() if p.dirname == "beta"][0]
+    want = t.install_dir("fake") / "lib" / "cmake" / "alpha"
+    assert f"alpha_DIR:PATH={want}" in b.package_cache(beta).read_text()
+    assert "env fake: ok" in invoke("status", "-t", "t1").output
+
+
+def test_unwrap_spack_compilers(xero, tmp_path):
+    invoke, area = xero
+    wrapper = tmp_path / "spack" / "libexec" / "spack" / "gcc"
+    dump = area.build_env_dump("fake")
+    dump.parent.mkdir(parents=True, exist_ok=True)
+    dump.write_text(
+        f"export PATH={wrapper}:/usr/bin\n"
+        f"export CC={wrapper}/gcc\nexport CXX={wrapper}/g++\n"
+        "export SPACK_CC=/usr/bin/gcc\nexport SPACK_CXX=/usr/bin/g++\n"
+    )
+    area.doc["envs"]["fake"] = {"profile": "spack-build-env"}
+    area.save()
+    t = _topic(invoke, area)
+    env = environ.compute(t, "fake", "build", base={"PATH": "/bin"})
+    assert env["CC"] == "/usr/bin/gcc" and env["CXX"] == "/usr/bin/g++"
+    assert "libexec/spack" not in env["PATH"]
+    b = builders.get(Topic(area, "t1"), "fake")
+    assert b.ctx.compilers() == {"CMAKE_C_COMPILER": "/usr/bin/gcc", "CMAKE_CXX_COMPILER": "/usr/bin/g++"}
+    area.doc["envs"]["fake"]["compiler_wrapper"] = True
+    area.save()
+    env = environ.compute(Topic(area, "t1"), "fake", "build", base={"PATH": "/bin"})
+    assert env["CC"] == f"{wrapper}/gcc" and str(wrapper) in env["PATH"]
+
+
+def test_shadowed_entries_ignore_generic_dirs(tmp_path):
+    from xero.builders.base import shadowed_entries
+
+    view, install = tmp_path / "view", tmp_path / "install"
+    for d in (view / "include", install / "include", install / "lib", install / "lib" / "cmake" / "Foo"):
+        d.mkdir(parents=True, exist_ok=True)
+    (install / "lib" / "libfoo.so").write_text("")
+    (install / "lib" / "cmake" / "Foo" / "FooConfig.cmake").write_text("")
+    cache = tmp_path / "CMakeCache.txt"
+    cache.write_text(
+        f"MPI_CXX_HEADER_DIR:PATH={view}/include\n"
+        f"Foo_LIBRARY:FILEPATH={view}/lib/libfoo.so\n"
+        f"Foo_DIR:PATH={view}/lib/cmake/Foo\n"
+        f"Bar_LIBRARY:FILEPATH={view}/lib/libbar.so\n"
+    )
+    hits = shadowed_entries(cache, view, install)
+    assert [h.split("=")[0] for h in hits] == ["Foo_LIBRARY", "Foo_DIR"]
+
+
+@pytest.mark.skipif(not shutil.which("cmake"), reason="needs cmake")
+@pytest.mark.parametrize("builder", ["superbuild", "cmake-each"])
+def test_filtered_view_hides_overridden_package(xero, upstreams, tmp_path, builder):
+    """A view package that a topic source overrides is left out of the topic's view."""
+    from xero import view
+
+    invoke, area = xero
+    store = tmp_path / "store" / ("alpha-1.0-" + "a" * 32)
+    (store / "lib" / "cmake" / "alpha").mkdir(parents=True)
+    (store / "lib" / "cmake" / "alpha" / "alphaConfig.cmake").write_text("set(alpha_FOUND TRUE)\n")
+    (store / "include").mkdir()
+    (store / "include" / "alpha.h").write_text("// old\n")
+    other = tmp_path / "store" / ("zeta-2.0-" + "b" * 32) / "include"
+    other.mkdir(parents=True)
+    (other / "zeta.h").write_text("")
+    v = area.view("fake")
+    (v / "lib" / "cmake").mkdir(parents=True)
+    (v / "lib" / "cmake" / "alpha").symlink_to(store / "lib" / "cmake" / "alpha")
+    (v / "include").mkdir()
+    (v / "include" / "alpha.h").symlink_to(store / "include" / "alpha.h")
+    (v / "include" / "zeta.h").symlink_to(other / "zeta.h")
+
+    for n in ("alpha", "beta"):
+        invoke("repo", "add", n, upstreams[n])
+    t = _topic(invoke, area, "t1", "--builder", builder)
+    invoke("topic", "add", "-t", "t1", "beta", "main")
+    assert (t.env_root("fake") / "view").is_symlink()
+    invoke("build", "-t", "t1")
+
+    invoke("topic", "add", "-t", "t1", "alpha", "main")
+    local = t.env_root("fake") / "view"
+    assert local.is_dir() and not local.is_symlink()
+    assert not (local / "include" / "alpha.h").exists()
+    assert not (local / "lib" / "cmake" / "alpha").exists()
+    assert (local / "include" / "zeta.h").resolve() == (other / "zeta.h").resolve()
+    assert view.path(Topic(area, "t1"), "fake") == local
+    assert "env fake: wipe" in invoke("status", "-t", "t1").output
+
+    invoke("build", "-t", "t1")
+    b = builders.get(Topic(area, "t1"), "fake")
+    beta = [p for p in b.ctx.packages() if p.dirname == "beta"][0]
+    want = t.install_dir("fake") / "lib" / "cmake" / "alpha"
+    assert f"alpha_DIR:PATH={want}" in b.package_cache(beta).read_text()
+    assert "env fake: ok" in invoke("status", "-t", "t1").output
+
+    invoke("topic", "rm", "-t", "t1", "alpha")
+    assert (t.env_root("fake") / "view").is_symlink()

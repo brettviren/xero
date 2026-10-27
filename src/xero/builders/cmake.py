@@ -9,8 +9,10 @@ so they build identically; they differ only in orchestration.
 
 from __future__ import annotations
 
-from .base import Builder
-from ..util import die, sha256_text
+import shutil
+
+from .base import Builder, shadowed_entries
+from ..util import die, say, sha256_text
 
 
 class SuperBuild(Builder):
@@ -40,6 +42,10 @@ class SuperBuild(Builder):
         # ExternalProject_Add(PREFIX build/<project>)
         return self.ctx.build / pkg.project
 
+    def package_cache(self, pkg):
+        # ExternalProject's default BINARY_DIR is <PREFIX>/src/<name>-build
+        return self.package_build_dir(pkg) / "src" / f"{pkg.project}-build" / "CMakeCache.txt"
+
     def build(self, packages: list[str] | None) -> None:
         ctx = self.ctx
         cmd = [ctx.tool("cmake"), "--build", ctx.build]
@@ -48,6 +54,12 @@ class SuperBuild(Builder):
             for name in packages:
                 cmd += ["--target", by_dir[name]]
         ctx.run(cmd)
+        # A sibling installed during this build may shadow what an
+        # already-configured package cached from the view; redo those once.
+        shadowed = self.shadowed()
+        if shadowed:
+            self.forget(sorted(shadowed), "its CMake cache pins view artifacts the install now provides")
+            ctx.run(cmd)
 
 
 class CMakeEach(Builder):
@@ -86,6 +98,12 @@ class CMakeEach(Builder):
         if packages:
             pkgs = [p for p in pkgs if p.dirname in packages]
         for pkg in pkgs:
+            # Siblings installed just before may shadow what this package
+            # cached from the view on an earlier configure.
+            if shadowed_entries(self.package_cache(pkg), ctx.view, ctx.install):
+                bdir = self.package_build_dir(pkg)
+                say(f"removing {bdir} (its CMake cache pins view artifacts the install now provides)")
+                shutil.rmtree(bdir)
             self._configure_one(pkg)
             bdir = ctx.build / pkg.dirname
             ctx.run([ctx.tool("cmake"), "--build", bdir])

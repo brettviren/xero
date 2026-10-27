@@ -37,7 +37,7 @@ Step-by-step recipes: [[file:docs/howtos/index.org][docs/howtos]].
     venv/                         topic Python venv (uv-managed interpreter)
     envs/<env>/
       source -> ../../source
-      view   -> extern/envs/<env>/view
+      view   -> extern/envs/<env>/view    (or a filtered copy, see below)
       build/ install/ run/        run/.envrc for direnv
 #+end_example
 
@@ -91,7 +91,9 @@ which run when a topic is implied (cwd inside =topics/<t>/= or =XERO_TOPIC=).
 - =profile = "view"= :: environment from the view (default).
 - =profile = "spack-build-env"= :: a captured =spack build-env <spec>=
   (=xero extern capture -e <env> [--spec S | --from dump.sh]=), for stacks
-  such as art/LArSoft that need it.
+  such as art/LArSoft that need it.  Builds use the real compilers behind
+  Spack's compiler wrapper (=compiler_wrapper = true= keeps the wrapper,
+  whose injected -I/-L would beat the topic's own installs).
 
 plus =cc=, =cxx=, =cxx_standard=, =build_type=, =[envs.<env>.cmake]= (-D
 options), =[envs.<env>.prepend]= and =[envs.<env>.set]= (environment).  A
@@ -102,6 +104,17 @@ topic's =[env.<env>]= table may set the same keys for itself.  Values may use
 The run environment layers: caller < profile < view < install < prepend/set <
 venv.  The build environment omits the venv and LD_LIBRARY_PATH, and (for
 "view" profiles) drops CPATH and friends.
+
+* Overriding a Spack package
+
+A topic source that is also a package in the Spack view (eg
+wire-cell-toolkit) would otherwise leak back in: every view package's
+=include/= and =lib/= are on the search paths.  So when a topic overrides a
+view package, =envs/<env>/view= becomes a real directory holding the view's
+symlinks minus that package's entries (and a captured build environment drops
+that package's store paths).  The source's Spack package name is its repo
+name, or =spack = "<name>"= in its =[source.<name>]= table.  Changing the
+filtered set wipes the env's build directory.
 
 * Builders
 
@@ -124,8 +137,9 @@ resolved source path, HEAD and a hash of uncommitted changes, and for the env
 the builder, settings, package set, =spack.lock= and profile.  =status= and
 =build --stale-only= compare against it.  Changed settings reconfigure; a
 source whose path changed (a ref switch) reconfigures with its package build
-directory removed; a changed =spack.lock= or profile wipes the build
-directory.
+directory removed; a package whose CMake cache still points at a view
+artifact that the install now provides (a source added later) is redone; a
+changed =spack.lock=, profile or compiler wipes the build directory.
 
 The venv is stale only when its python version, requirements, python source
 set or a source's packaging metadata change: sources are editable installs

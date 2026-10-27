@@ -10,7 +10,8 @@ Layering, later layers taking precedence (path-like variables are prepended):
 
   1. the caller's environment
   2. the env profile: nothing for "view"; the captured ``spack build-env``
-     dump for "spack-build-env"
+     dump for "spack-build-env" (with the real compilers instead of Spack's
+     compiler wrapper unless ``compiler_wrapper = true``)
   3. the Spack view   (bin, lib, pkgconfig, CMAKE_PREFIX_PATH)
   4. the topic+env install prefix
   5. [envs.<e>.prepend|set] from xero.toml, then [env.<e>.prepend|set] from
@@ -25,6 +26,7 @@ import shlex
 import subprocess
 from pathlib import Path
 
+from . import view as topic_view
 from .area import Area
 from .topic import Topic
 from .util import die, say, which
@@ -92,6 +94,25 @@ def layer(env: dict[str, str], extra: dict[str, str]) -> None:
             env[k] = v
 
 
+COMPILER_VARS = {"CC": "SPACK_CC", "CXX": "SPACK_CXX", "FC": "SPACK_FC", "F77": "SPACK_F77"}
+
+
+def unwrap_compilers(env: dict[str, str]) -> None:
+    """Use the real compilers behind Spack's compiler wrapper.
+
+    The wrapper injects -I/-L/rpath for every dependency of the captured
+    spec.  Those then win over a topic's own install of the same package (eg
+    a WCT source built in the topic is linked against the Spack store's WCT),
+    so by default builds use the wrapped compilers and let CMake resolve
+    everything through CMAKE_PREFIX_PATH (install first, then view).
+    """
+    for var, spack_var in COMPILER_VARS.items():
+        if env.get(spack_var):
+            env[var] = env[spack_var]
+    path = [p for p in env.get("PATH", "").split(":") if p and "/libexec/spack" not in p]
+    env["PATH"] = ":".join(path)
+
+
 def templates(topic: Topic, env_name: str | None) -> dict[str, str]:
     area = topic.area
     vals = {
@@ -108,7 +129,7 @@ def templates(topic: Topic, env_name: str | None) -> dict[str, str]:
             build=str(topic.build_dir(env_name)),
             install=str(topic.install_dir(env_name)),
             run=str(topic.run_dir(env_name)),
-            view=str(area.view(env_name)),
+            view=str(topic_view.path(topic, env_name)),
         )
     return vals
 
@@ -153,11 +174,20 @@ def compute(
         area.require_env(env_name)
         profile = area.env_profile(env_name)
         kind = profile.get("profile", "view")
-        view = area.view(env_name)
+        view = topic_view.path(topic, env_name)
         install = topic.install_dir(env_name)
 
         if kind == "spack-build-env":
-            layer(env, load_dump(area.build_env_dump(env_name)))
+            dump = load_dump(area.build_env_dump(env_name))
+            drop = set(topic_view.read_meta(topic, env_name).get("overridden", []))
+            if drop:
+                # The dump points into the Spack store prefixes of packages the
+                # topic overrides; keep those out like the filtered view does.
+                dump = {k: ":".join(p for p in v.split(":") if not topic_view.drops(p, drop))
+                        if is_pathlike(k) else v for k, v in dump.items()}
+            layer(env, dump)
+            if not profile.get("compiler_wrapper", False):
+                unwrap_compilers(env)
         elif kind != "view":
             die(f"xero.toml [envs.{env_name}] unknown profile {kind!r} (want view|spack-build-env)")
 

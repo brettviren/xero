@@ -5,14 +5,50 @@
 
 from __future__ import annotations
 
+import os
+import re
 import shutil
 from pathlib import Path
 
-from .. import discover, environ, stamp
+from .. import discover, environ, stamp, view
 from ..topic import Topic
 from ..util import die, run, say, sha256_file, sha256_text, which
 
 INIT_CACHE = "xero-init.cmake"
+
+_CACHE_ENTRY = re.compile(r"^([A-Za-z0-9_]+)_(LIBRARY|DIR):(FILEPATH|PATH)=(.*)$")
+
+
+def shadowed_entries(cache: Path, view: Path, install: Path) -> list[str]:
+    """CMake cache entries pinned to the view that the install now shadows.
+
+    A cached *_LIBRARY / *_DIR hit is never re-searched, so when a package was
+    configured before a sibling providing the same artifact was installed (eg
+    a WCT source added to a topic after larwirecell was first built), the
+    package keeps using the view's copy.  *_INCLUDE_DIR entries are skipped:
+    every prefix has an include/, so they would always look shadowed.
+    """
+    if not cache.is_file():
+        return []
+    view_s = str(view) + os.sep
+    hits = []
+    for line in cache.read_text(errors="replace").splitlines():
+        m = _CACHE_ENTRY.match(line)
+        if not m or m.group(1).endswith("_INCLUDE"):
+            continue
+        val = m.group(4)
+        if not val.startswith(view_s):
+            continue
+        cand = install / val[len(view_s):]
+        # A generic directory (include/, lib/) exists in every prefix; only a
+        # file or a CMake package-config directory is a real shadow.
+        if cand.is_file() or (cand.is_dir() and _is_config_dir(cand)):
+            hits.append(f"{m.group(1)}_{m.group(2)}={val}")
+    return hits
+
+
+def _is_config_dir(path: Path) -> bool:
+    return any(path.glob("*Config.cmake")) or any(path.glob("*-config.cmake"))
 
 
 class Context:
@@ -28,7 +64,7 @@ class Context:
         self.source = topic.source_dir
         self.build = topic.build_dir(env)
         self.install = topic.install_dir(env)
-        self.view = self.area.view(env)
+        self.view = view.path(topic, env)
         self._environ: dict[str, str] | None = None
 
     @property
@@ -79,6 +115,8 @@ class Context:
                 out[f"CMAKE_{lang}_COMPILER"] = name if Path(name).is_absolute() else self.tool(name)
             elif (self.view / "bin" / default).is_file():
                 out[f"CMAKE_{lang}_COMPILER"] = str(self.view / "bin" / default)
+            elif self.environ.get("CC" if lang == "C" else "CXX"):
+                out[f"CMAKE_{lang}_COMPILER"] = self.environ["CC" if lang == "C" else "CXX"]
         return out
 
     def cmake_settings(self) -> dict[str, object]:
@@ -143,6 +181,8 @@ class Context:
             "settings": sha256_text(self.init_cache_text()),
             "packages": sorted(e.name for e in self.topic.cmake_sources(self.env)),
             "lock": sha256_file(self.area.env_dir(self.env) / "spack.lock"),
+            "compilers": sha256_text(repr(sorted(self.compilers().items()))),
+            "view": sha256_text(f"{self.view}:{view.read_meta(self.topic, self.env).get('overridden', [])}"),
             "profile": sha256_text(repr(sorted((k, repr(v)) for k, v in prof.items()))),
         }
         fp.update(extra or {})
@@ -186,35 +226,62 @@ class Builder:
         """The build dir of one package (a discover.Package)."""
         return self.ctx.build / pkg.dirname
 
-    def forget(self, names: list[str]) -> None:
-        """Remove the build dirs of packages whose source path changed."""
+    def package_cache(self, pkg) -> Path:
+        """The CMakeCache.txt of one package's build."""
+        return self.package_build_dir(pkg) / "CMakeCache.txt"
+
+    def forget(self, names: list[str], why: str) -> None:
+        """Remove the build dirs of the named packages so they reconfigure."""
         for pkg in self.ctx.packages():
             if pkg.dirname in names:
                 bdir = self.package_build_dir(pkg)
                 if bdir.exists():
-                    say(f"removing {bdir} (source of {pkg.dirname} moved)")
+                    say(f"removing {bdir} ({why})")
                     shutil.rmtree(bdir)
 
+    def shadowed(self) -> dict[str, list[str]]:
+        """{package: shadowed cache entries} over the env's packages."""
+        ctx = self.ctx
+        out = {}
+        for pkg in ctx.packages():
+            hits = shadowed_entries(self.package_cache(pkg), ctx.view, ctx.install)
+            if hits:
+                out[pkg.dirname] = hits
+        return out
+
     def status(self) -> dict:
-        return stamp.compare(stamp.load(self.ctx.build), self.fingerprint(), self.ctx.package_states())
+        report = stamp.compare(stamp.load(self.ctx.build), self.fingerprint(), self.ctx.package_states())
+        shadowed = self.shadowed()
+        report["shadowed"] = sorted(shadowed)
+        for name, hits in sorted(shadowed.items()):
+            more = f" (+{len(hits) - 1} more)" if len(hits) > 1 else ""
+            report["reasons"].append(f"{name}: CMake cache uses the view's {hits[0]}{more}, now shadowed by the install")
+        if shadowed and report["state"] in ("ok", "stale"):
+            report["state"] = "reconfigure"
+        return report
 
     def go(self, packages: list[str] | None = None, fresh: bool = False) -> None:
         """Configure if needed, build, and stamp."""
         ctx = self.ctx
         report = self.status()
         if fresh or report["state"] == "wipe":
-            why = "requested" if fresh else "; ".join(r for r in report["reasons"] if "Spack env" in r)
+            why = "requested" if fresh else "; ".join(
+                r for r in report["reasons"] if r.startswith(("Spack env", "compilers", "view"))
+            )
             if ctx.build.exists():
                 say(f"wiping {ctx.build} ({why})")
                 shutil.rmtree(ctx.build)
-            report = {"state": "unbuilt", "moved": []}
+            report = {"state": "unbuilt", "moved": [], "shadowed": []}
         if packages:
             known = {e.name for e in ctx.topic.cmake_sources(ctx.env)}
             unknown = [p for p in packages if p not in known]
             if unknown:
                 die(f"not a CMake source of env '{ctx.env}': {', '.join(unknown)}")
         if report.get("moved"):
-            self.forget(report["moved"])
+            self.forget(report["moved"], "its source moved")
+            self._reconfigure = True
+        if report.get("shadowed"):
+            self.forget(report["shadowed"], "its CMake cache pins view artifacts the install now provides")
             self._reconfigure = True
         if not self.configured() or report["state"] in ("unbuilt", "reconfigure"):
             self.configure()

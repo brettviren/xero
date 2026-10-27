@@ -18,7 +18,11 @@ Example:
 
 States: =ok=, =stale= (sources changed), =reconfigure= (settings changed or a
 source moved to another worktree, eg after =set-ref=), =wipe= (Spack env
-changed), =unbuilt=.
+or compilers changed), =unbuilt=.
+
+A source added to a topic that also exists in the Spack view (eg WCT) makes
+packages configured earlier =reconfigure=: their CMake caches still point at
+the view's copy.  =xero build= redoes them.
 
 Rebuild what is stale:
 
