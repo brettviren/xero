@@ -1,0 +1,36 @@
+[project]
+name = "xero"
+version = "0.1.0"
+description = "Topic-oriented multi-repo, multi-environment development areas"
+readme = {file = "README.org", content-type = "text/org"}
+authors = [
+    { name = "Brett Viren", email = "brett.viren@gmail.com" }
+]
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+requires-python = ">=3.11"
+dependencies = [
+    "click>=8.1",
+    "tomlkit>=0.13",
+]
+
+[project.scripts]
+xero = "xero.cli:main"
+
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+xero = ["data/*", "data/**/*"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["test"]

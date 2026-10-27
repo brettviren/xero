@@ -1,0 +1,123 @@
+#+title: xero
+#+subtitle: topic-oriented multi-repo, multi-environment development areas
+
+Development is organized by *topic* (a concern).  Each topic selects its own
+branches of a number of source repos, builds them against one or more Spack
+environments and has its own build, install, run and Python venv areas.
+Branches are shared between topics through git worktrees.
+
+* Install
+
+#+begin_src shell
+  uv tool install -e /path/to/xero
+#+end_src
+
+* Area layout
+
+#+begin_example
+<area>/
+  xero.toml                       repo registry, Spack env profiles
+  extern/                         Spack + envs (may symlink another area's)
+  repos/<repo>.git/               bare clones
+  branches/<repo>/<ref>/          worktrees, one per ref
+  share/superbuild/CMakeLists.txt shared super-build
+  cache/env/<env>.sh              captured Spack build environments
+  topics/<t>/
+    topic.toml                    SOURCE OF TRUTH
+    source/<name>                 -> branches/... | full clone | directory
+    source/CMakeLists.txt         -> share/superbuild/... (or a real file)
+    refs/<name>                   read-only, never built
+    venv/                         topic Python venv (uv-managed interpreter)
+    envs/<env>/
+      source -> ../../source
+      view   -> extern/envs/<env>/view
+      build/ install/ run/        run/.envrc for direnv
+#+end_example
+
+* Quick start
+
+#+begin_src shell
+  xero init --extern ~/dune/xerosere/extern ~/dune/xero
+  cd ~/dune/xero
+  xero repo add hep-units git@github.com:brettviren/hep-units.git
+  xero repo add --from ~/old/devel/hep-config hep-config   # keeps local branches
+  xero topic new demo -e gcc15
+  xero topic add -t demo hep-units main
+  xero topic add -t demo hep-config my-feature
+  xero build -t demo
+  xero status -t demo
+  xero run -t demo -- some-program args
+  eval "$(xero env -t demo)"                 # bash
+  xero env -t demo --shell fish | source     # fish
+#+end_src
+
+Inside =topics/<t>/= (or =envs/<e>/=) the =-t= (and =-e=) options may be
+omitted.  =XERO_TOPIC= and =XERO_ENV= also select them.
+
+* Commands
+
+- =init= :: make or complete an area; =--extern= links an existing extern/.
+- =repo add|list|fetch= :: bare repos.  =repo add --from <clone>= converts an
+  existing clone, carrying its local branches (stashes are not carried).
+- =branch add|list= :: worktrees, with the topics that use them.
+- =topic new|list|add|set-ref|rm= :: edit =topic.toml= and sync.
+- =sync= :: make topic directories match =topic.toml=.  Repairs symlinks and
+  makes missing worktrees/clones; never deletes real files (reported as drift).
+- =status= :: a topic's drift and what is stale, and why.
+- =check= :: every topic plus worktree HEAD drift and unused worktrees; exits 1
+  on problems.
+- =gc [--remove]= :: remove unused worktrees that are clean and pushed.
+- =env= / =run= :: a topic's run environment.
+- =build [--stale-only] [--fresh] [PKG...]= :: build venv and envs.
+- =extern spack|concretize|install|capture= :: drive the Spack envs.
+
+* Environments
+
+=xero.toml= =[envs.<env>]= sets a profile per Spack env:
+
+- =profile = "view"= :: environment from the view (default).
+- =profile = "spack-build-env"= :: a captured =spack build-env <spec>=
+  (=xero extern capture -e <env> [--spec S | --from dump.sh]=), for stacks
+  such as art/LArSoft that need it.
+
+plus =cc=, =cxx=, =cxx_standard=, =build_type=, =[envs.<env>.cmake]= (-D
+options), =[envs.<env>.prepend]= and =[envs.<env>.set]= (environment).  A
+topic's =[env.<env>]= table may set the same keys for itself.  Values may use
+={area} {topic} {env} {source} {build} {install} {run} {view} {extern} {venv}
+{refs}=.
+
+The run environment layers: caller < profile < view < install < prepend/set <
+venv.  The build environment omits the venv and LD_LIBRARY_PATH, and (for
+"view" profiles) drops CPATH and friends.
+
+* Builders
+
+Chosen per topic and env by =[env.<env>] builder=:
+
+- =superbuild= :: one ExternalProject super-build over =source/=.
+- =cmake-each= :: configure, build and install each package in dependency
+  order.
+- =script= :: run =envs/<env>/build.sh= (or =script = "..."=) with =XERO_*=
+  variables.
+
+Both CMake builders hand every package the same initial-cache file
+(=build/xero-init.cmake=): install prefix, =CMAKE_PREFIX_PATH= (install,
+view), compilers, ccache launcher, RPATH and the configured -D options.
+
+* Staleness
+
+A successful build writes =envs/<env>/build/.xero-stamp.json=: per package the
+resolved source path, HEAD and a hash of uncommitted changes, and for the env
+the builder, settings, package set, =spack.lock= and profile.  =status= and
+=build --stale-only= compare against it.  Changed settings reconfigure; a
+changed =spack.lock= or profile wipes the build directory.
+
+The venv is stale only when its python version, requirements, python source
+set or a source's packaging metadata change: sources are editable installs
+through =source/<name>=, so code edits and ref switches need no reinstall.
+
+* Tests
+
+#+begin_src shell
+  uv venv && uv pip install -e . pytest && .venv/bin/pytest
+#+end_src
