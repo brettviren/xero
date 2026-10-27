@@ -4,7 +4,12 @@
 Development is organized by *topic* (a concern).  Each topic selects its own
 branches of a number of source repos, builds them against one or more Spack
 environments and has its own build, install, run and Python venv areas.
-Branches are shared between topics through git worktrees.
+Branches are shared between topics through symlinks to git worktrees.
+
+The =xero= program provides utilities to help the developer maintain the
+organization and otherwise staying out of the way.  A developer can work in a
+configured topic area without using =xero= and developer products may be vanilla
+and not themselves carry the patterns that =xero= helps organize.
 
 * Install
 
@@ -131,3 +136,7 @@ through =source/<name>=, so code edits and ref switches need no reinstall.
 #+begin_src shell
   uv venv && uv pip install -e . pytest && .venv/bin/pytest
 #+end_src
+
+* Shell tab completion
+
+The =xero= command should work with Click completion support.  See https://click.palletsprojects.com/en/stable/shell-completion/
