@@ -93,9 +93,13 @@ def save(build_dir: Path, config: dict, packages: dict, merge: bool) -> None:
 
 def compare(stamp: dict | None, config: dict, packages: dict) -> dict:
     """Staleness report: {"state": "unbuilt"|"wipe"|"reconfigure"|"stale"|"ok",
-    "reasons": [...], "stale": [package names]}."""
+    "reasons": [...], "stale": [package names], "moved": [package names]}.
+
+    A package whose source path changed (eg a ref switch) is "moved": its
+    build dir is tied to the old source path, so it needs a fresh configure.
+    """
     if stamp is None:
-        return {"state": "unbuilt", "reasons": ["never built"], "stale": sorted(packages)}
+        return {"state": "unbuilt", "reasons": ["never built"], "stale": sorted(packages), "moved": []}
     old_cfg = stamp.get("config", {})
     reasons = []
     state = "ok"
@@ -111,6 +115,7 @@ def compare(stamp: dict | None, config: dict, packages: dict) -> dict:
                 reasons.append(f"{key} changed")
                 state = "reconfigure"
     stale = []
+    moved = []
     old_pk = stamp.get("packages", {})
     for name, st in sorted(packages.items()):
         if name not in old_pk:
@@ -119,6 +124,10 @@ def compare(stamp: dict | None, config: dict, packages: dict) -> dict:
         elif old_pk[name] != st:
             stale.append(name)
             reasons.append(f"{name}: {describe_source_change(old_pk[name], st)}")
+            if old_pk[name].get("path") != st.get("path"):
+                moved.append(name)
+    if moved and state in ("ok", "stale"):
+        state = "reconfigure"
     if stale and state == "ok":
         state = "stale"
-    return {"state": state, "reasons": reasons, "stale": stale}
+    return {"state": state, "reasons": reasons, "stale": stale, "moved": moved}

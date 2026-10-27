@@ -1,0 +1,24 @@
+#+title: Use a captured Spack build environment
+
+For stacks (eg art/LArSoft) whose builds need =spack build-env=.  In
+=xero.toml=:
+
+#+begin_src toml
+  [envs.wcls]
+  profile = "spack-build-env"
+  spec = "larwirecell"
+  cc = "gcc"
+  cxx = "g++"
+  cxx_standard = "17"
+#+end_src
+
+Capture (fresh from Spack, or import an existing dump):
+
+#+begin_src shell
+  xero extern capture -e wcls
+  xero extern capture -e wcls --from ~/old/builds/wcls-build-env.sh
+  less cache/env/wcls.sh
+#+end_src
+
+Re-capture after the Spack env changes; builds of that env are then wiped
+and rebuilt by the next =xero build=.

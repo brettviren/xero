@@ -165,6 +165,7 @@ class Builder:
     """Builder interface.  Subclasses implement configure() and build()."""
 
     name = "base"
+    _reconfigure = False
 
     def __init__(self, ctx: Context) -> None:
         self.ctx = ctx
@@ -181,6 +182,19 @@ class Builder:
     def build(self, packages: list[str] | None) -> None:
         raise NotImplementedError
 
+    def package_build_dir(self, pkg) -> Path:
+        """The build dir of one package (a discover.Package)."""
+        return self.ctx.build / pkg.dirname
+
+    def forget(self, names: list[str]) -> None:
+        """Remove the build dirs of packages whose source path changed."""
+        for pkg in self.ctx.packages():
+            if pkg.dirname in names:
+                bdir = self.package_build_dir(pkg)
+                if bdir.exists():
+                    say(f"removing {bdir} (source of {pkg.dirname} moved)")
+                    shutil.rmtree(bdir)
+
     def status(self) -> dict:
         return stamp.compare(stamp.load(self.ctx.build), self.fingerprint(), self.ctx.package_states())
 
@@ -193,12 +207,15 @@ class Builder:
             if ctx.build.exists():
                 say(f"wiping {ctx.build} ({why})")
                 shutil.rmtree(ctx.build)
-            report = {"state": "unbuilt"}
+            report = {"state": "unbuilt", "moved": []}
         if packages:
             known = {e.name for e in ctx.topic.cmake_sources(ctx.env)}
             unknown = [p for p in packages if p not in known]
             if unknown:
                 die(f"not a CMake source of env '{ctx.env}': {', '.join(unknown)}")
+        if report.get("moved"):
+            self.forget(report["moved"])
+            self._reconfigure = True
         if not self.configured() or report["state"] in ("unbuilt", "reconfigure"):
             self.configure()
         self.build(packages)

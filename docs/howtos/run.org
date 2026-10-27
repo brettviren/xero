@@ -1,0 +1,38 @@
+#+title: Run programs in a topic environment
+
+One command, from anywhere:
+
+#+begin_src shell
+  xero run -t T -e E -- my-program --args
+  xero run -t T -e E -- which wcpy
+#+end_src
+
+A subshell (=$SHELL=; =exit= to leave):
+
+#+begin_src shell
+  xero shell -t T -e E
+#+end_src
+
+The current shell (bash / fish):
+
+#+begin_src shell
+  eval "$(xero env -t T -e E)"
+  xero env -t T -e E --shell fish | source
+#+end_src
+
+Aliases (fish):
+
+#+begin_src shell
+  alias xr 'xero run --'
+  alias xs 'xero shell'
+#+end_src
+
+Inspect:
+
+#+begin_src shell
+  xero env -t T -e E                 # run environment
+  xero env -t T -e E --build         # build environment
+#+end_src
+
+Order on =PATH=: topic venv, install, view, then your own.  Without =-e=
+and with several envs only the venv applies.

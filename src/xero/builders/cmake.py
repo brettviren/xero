@@ -36,6 +36,10 @@ class SuperBuild(Builder):
             f"-DXERO_EXCLUDE={';'.join(ctx.excluded())}",
         ])
 
+    def package_build_dir(self, pkg):
+        # ExternalProject_Add(PREFIX build/<project>)
+        return self.ctx.build / pkg.project
+
     def build(self, packages: list[str] | None) -> None:
         ctx = self.ctx
         cmd = [ctx.tool("cmake"), "--build", ctx.build]
@@ -50,7 +54,6 @@ class CMakeEach(Builder):
     """Configure, build and install each package in dependency order."""
 
     name = "cmake-each"
-    _reconfigure = False
 
     def configured(self) -> bool:
         return all(

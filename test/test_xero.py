@@ -215,3 +215,50 @@ def test_build(xero, upstreams, builder):
     invoke("build", "-t", "t1", "--stale-only")
     assert (inst / "share" / "beta" / "data.txt").read_text() == "b2\n"
     assert "env fake: ok" in invoke("status", "-t", "t1").output
+
+
+def test_env_add_and_new_branch(xero, upstreams):
+    invoke, area = xero
+    invoke("repo", "add", "alpha", upstreams["alpha"])
+    invoke("topic", "new", "t1")
+    t = Topic(area, "t1")
+    assert t.envs == {}
+    invoke("topic", "env-add", "-t", "t1", "fake", "--builder", "cmake-each")
+    t = Topic(area, "t1")
+    assert t.envs == {"fake": {"builder": "cmake-each"}}
+    assert (t.env_root("fake") / "view").is_symlink()
+    invoke("topic", "add", "-t", "t1", "alpha", "main")
+    invoke("topic", "set-ref", "-t", "t1", "--new", "alpha", "my/work")
+    wt = area.branch_path("alpha", "my/work")
+    assert (t.source_dir / "alpha").resolve() == wt.resolve()
+    assert git("rev-parse", "--abbrev-ref", "HEAD", cwd=wt) == "my/work"
+    assert git("rev-parse", "HEAD", cwd=wt) == git("rev-parse", "main", cwd=area.repo_path("alpha"))
+    with pytest.raises(Die, match="already exists"):
+        invoke("topic", "set-ref", "-t", "t1", "--new", "alpha", "my/work")
+    invoke("branch", "add", "--new", "v1", "alpha", "other")
+    assert area.branch_path("alpha", "other").is_dir()
+    invoke("topic", "env-rm", "-t", "t1", "fake")
+    assert Topic(area, "t1").envs == {}
+
+
+@pytest.mark.skipif(not shutil.which("cmake"), reason="needs cmake")
+@pytest.mark.parametrize("builder", ["superbuild", "cmake-each"])
+def test_build_after_ref_switch(xero, upstreams, builder):
+    invoke, area = xero
+    for n in ("alpha", "beta"):
+        invoke("repo", "add", n, upstreams[n])
+    t = _topic(invoke, area, "t1", "--builder", builder)
+    invoke("topic", "add", "-t", "t1", "alpha", "main")
+    invoke("topic", "add", "-t", "t1", "beta", "main")
+    invoke("build", "-t", "t1")
+    invoke("topic", "set-ref", "-t", "t1", "--new", "beta", "work")
+    wt = area.branch_path("beta", "work")
+    (wt / "data.txt").write_text("from work\n")
+    st = (wt / "data.txt").stat()  # cmake install skips files whose mtime did not change
+    os.utime(wt / "data.txt", (st.st_atime + 10, st.st_mtime + 10))
+    git("commit", "-q", "-am", "work", cwd=wt)
+    res = invoke("status", "-t", "t1")
+    assert "env fake: reconfigure" in res.output and "source moved" in res.output
+    invoke("build", "-t", "t1")
+    assert (t.install_dir("fake") / "share" / "beta" / "data.txt").read_text() == "from work\n"
+    assert "env fake: ok" in invoke("status", "-t", "t1").output

@@ -1,0 +1,22 @@
+#+title: Start a topic
+
+#+begin_src shell
+  xero topic new T -e E -d "what this topic is about"
+  xero topic add -t T R1 main
+  xero topic add -t T R2 my-branch
+  xero build -t T
+#+end_src
+
+Use another builder (=superbuild= default, =cmake-each=, =script=):
+
+#+begin_src shell
+  xero topic new T -e E --builder cmake-each
+#+end_src
+
+List and inspect:
+
+#+begin_src shell
+  xero topic list
+  cat topics/T/topic.toml
+  ls -l topics/T/source
+#+end_src

@@ -1,0 +1,28 @@
+#+title: Find what needs rebuilding
+
+#+begin_src shell
+  xero status -t T                 # one topic
+  xero status --all                # every topic
+  xero check                       # also worktree drift; exit 1 if anything
+#+end_src
+
+Example:
+
+#+begin_example
+  topic T
+    env E: stale
+      R1: HEAD 1f404f6b2c11 -> 7e29790aa012
+      R2: uncommitted changes
+    venv: ok
+#+end_example
+
+States: =ok=, =stale= (sources changed), =reconfigure= (settings changed or a
+source moved to another worktree, eg after =set-ref=), =wipe= (Spack env
+changed), =unbuilt=.
+
+Rebuild what is stale:
+
+#+begin_src shell
+  xero build -t T --stale-only
+  xero build --all --stale-only
+#+end_src

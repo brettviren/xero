@@ -153,6 +153,17 @@ def ensure_local_branch(repo: Path, ref: str) -> str:
     return kind
 
 
+def create_branch(repo: Path, name: str, base: str) -> None:
+    """Create local branch *name* in *repo* starting at *base* (any ref).
+
+    The new branch has no upstream; pushing it is up to the user.
+    """
+    if git_ok("show-ref", "--verify", "--quiet", f"refs/heads/{name}", cwd=repo):
+        die(f"branch '{name}' already exists in {repo}")
+    _, full = resolve_ref(repo, base)
+    git("branch", "--no-track", name, full, cwd=repo)
+
+
 def add_worktree(repo: Path, path: Path, ref: str, submodules: bool = False) -> None:
     """Add a worktree of *ref* at *path* (branch checked out; tag/sha detached)."""
     kind = ensure_local_branch(repo, ref)

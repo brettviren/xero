@@ -1,0 +1,28 @@
+#+title: Add a repo
+
+From its upstream URL:
+
+#+begin_src shell
+  xero repo add R git@github.com:org/R.git
+#+end_src
+
+From an existing local clone (keeps its local branches and remotes; stashes
+are not carried, so pop them first):
+
+#+begin_src shell
+  git -C ~/old/devel/R stash list
+  xero repo add --from ~/old/devel/R R
+#+end_src
+
+Add a personal fork remote:
+
+#+begin_src shell
+  xero repo remote R mine git@github.com:me/R.git
+#+end_src
+
+Update and inspect:
+
+#+begin_src shell
+  xero repo fetch R        # or: xero repo fetch   (all repos)
+  xero repo list
+#+end_src

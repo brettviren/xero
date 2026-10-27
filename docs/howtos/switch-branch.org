@@ -1,0 +1,34 @@
+#+title: Switch a source to another branch
+
+Existing branch (local or on any remote; makes the worktree if needed):
+
+#+begin_src shell
+  xero repo fetch R
+  xero topic set-ref -t T R other-branch
+  xero build -t T
+#+end_src
+
+New branch starting at the current ref:
+
+#+begin_src shell
+  xero topic set-ref -t T --new R my/new-work
+#+end_src
+
+New branch starting elsewhere:
+
+#+begin_src shell
+  xero topic set-ref -t T --new --base origin/develop R my/new-work
+#+end_src
+
+Push it (then =xero check= no longer calls it unpushed):
+
+#+begin_src shell
+  cd topics/T/source/R
+  git push -u mine my/new-work
+#+end_src
+
+Never =git switch= inside a =branches/R/<ref>= worktree; =xero check=
+reports that as drift.  Make a new worktree with =set-ref= instead.
+
+Other topics using the old ref are unaffected.  See [[file:gc.org][gc]] for
+worktrees no topic uses any more.

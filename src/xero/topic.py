@@ -231,6 +231,25 @@ class Topic:
         self.doc[section][name] = tab
         self.save()
 
+    def set_env(self, env: str, builder: str) -> None:
+        if builder not in BUILDERS:
+            die(f"unknown builder {builder!r} (want one of {BUILDERS})")
+        self.area.require_env(env)
+        if "env" not in self.doc:
+            self.doc["env"] = tomlkit.table(is_super_table=True)
+        if env in self.doc["env"]:
+            self.doc["env"][env]["builder"] = builder
+        else:
+            tab = tomlkit.table()
+            tab["builder"] = builder
+            self.doc["env"][env] = tab
+        self.save()
+
+    def remove_env(self, env: str) -> None:
+        self.env_config(env)
+        del self.doc["env"][env]
+        self.save()
+
     def remove_entry(self, section: str, name: str) -> None:
         tab = self.doc.get(section) or {}
         if name not in tab:

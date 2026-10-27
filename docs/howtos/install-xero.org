@@ -1,0 +1,9 @@
+#+title: Install xero
+
+#+begin_src shell
+  git clone <xero-url> ~/dev/xero
+  uv tool install -e ~/dev/xero
+  xero --help
+#+end_src
+
+Editable: changes in =~/dev/xero= take effect immediately.

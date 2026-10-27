@@ -1,0 +1,35 @@
+#+title: Add a Spack env to a topic
+
+#+begin_src shell
+  ls extern/envs                      # available envs
+  xero topic env-add -t T E2
+  xero topic env-add -t T E2 --builder cmake-each   # or change builder
+  xero build -t T -e E2
+#+end_src
+
+Limit a source to some envs (in =topics/T/topic.toml=):
+
+#+begin_src toml
+  [source.R]
+  ref = "main"
+  envs = ["E2"]
+#+end_src
+
+Per topic+env settings:
+
+#+begin_src toml
+  [env.E2]
+  builder = "cmake-each"
+  cxx_standard = "17"
+  [env.E2.cmake]
+  SOME_OPTION = "ON"
+  [env.E2.prepend]
+  WIRECELL_PATH = ["{source}/R/cfg"]
+#+end_src
+
+Remove (leaves =envs/E2/= on disk):
+
+#+begin_src shell
+  xero topic env-rm -t T E2
+  rm -rf topics/T/envs/E2
+#+end_src

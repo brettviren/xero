@@ -1,0 +1,17 @@
+#+title: xero howtos
+
+Short command recipes.  =T= is a topic, =E= a Spack env, =R= a repo.
+
+- [[file:install-xero.org][Install xero]]
+- [[file:new-area.org][Make a new area]]
+- [[file:add-repo.org][Add a repo]]
+- [[file:new-topic.org][Start a topic]]
+- [[file:add-env.org][Add a Spack env to a topic]]
+- [[file:add-source.org][Add a source (or reference) to a topic]]
+- [[file:switch-branch.org][Switch a source to another branch]]
+- [[file:build.org][Build a topic]]
+- [[file:run.org][Run programs in a topic environment]]
+- [[file:direnv.org][Use direnv]]
+- [[file:stale.org][Find what needs rebuilding]]
+- [[file:gc.org][Clean up unused worktrees]]
+- [[file:spack-build-env.org][Use a captured Spack build environment]]

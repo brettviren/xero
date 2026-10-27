@@ -1,0 +1,15 @@
+#+title: Clean up unused worktrees
+
+#+begin_src shell
+  xero branch list                 # every worktree and its users
+  xero gc                          # list removable: unused, clean, pushed
+  xero gc --remove
+#+end_src
+
+A worktree that is dirty or unpushed is never removed.  Push or discard, then:
+
+#+begin_src shell
+  git -C branches/R/my-branch status
+  git -C branches/R/my-branch push -u mine my-branch
+  xero gc --remove
+#+end_src

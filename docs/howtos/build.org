@@ -1,0 +1,22 @@
+#+title: Build a topic
+
+#+begin_src shell
+  xero build -t T                 # its venv and all its envs
+  xero build -t T -e E            # one env
+  xero build -t T -e E R1 R2      # only these sources (CMake)
+  xero build --all --stale-only   # everything that is out of date
+  xero build -t T -e E --fresh    # wipe build/ (and the venv) first
+#+end_src
+
+Inside =topics/T/= or =topics/T/envs/E/= the =-t= / =-e= may be omitted:
+
+#+begin_src shell
+  cd topics/T/envs/E && xero build
+#+end_src
+
+Products:
+
+#+begin_src shell
+  ls topics/T/envs/E/build topics/T/envs/E/install
+  cat topics/T/envs/E/build/xero-init.cmake     # every CMake setting
+#+end_src

@@ -12,6 +12,8 @@ Branches are shared between topics through git worktrees.
   uv tool install -e /path/to/xero
 #+end_src
 
+Step-by-step recipes: [[file:docs/howtos/index.org][docs/howtos]].
+
 * Area layout
 
 #+begin_example
@@ -60,14 +62,16 @@ omitted.  =XERO_TOPIC= and =XERO_ENV= also select them.
 - =repo add|list|fetch= :: bare repos.  =repo add --from <clone>= converts an
   existing clone, carrying its local branches (stashes are not carried).
 - =branch add|list= :: worktrees, with the topics that use them.
-- =topic new|list|add|set-ref|rm= :: edit =topic.toml= and sync.
+- =topic new|list|add|set-ref|rm|env-add|env-rm= :: edit =topic.toml= and
+  sync.  =set-ref --new [--base B]= starts a new branch.
+- =branch add [--new BASE]= :: a worktree, optionally of a new branch.
 - =sync= :: make topic directories match =topic.toml=.  Repairs symlinks and
   makes missing worktrees/clones; never deletes real files (reported as drift).
 - =status= :: a topic's drift and what is stale, and why.
 - =check= :: every topic plus worktree HEAD drift and unused worktrees; exits 1
   on problems.
 - =gc [--remove]= :: remove unused worktrees that are clean and pushed.
-- =env= / =run= :: a topic's run environment.
+- =env= / =run= / =shell= :: a topic's run environment.
 - =build [--stale-only] [--fresh] [PKG...]= :: build venv and envs.
 - =extern spack|concretize|install|capture= :: drive the Spack envs.
 
@@ -110,7 +114,9 @@ A successful build writes =envs/<env>/build/.xero-stamp.json=: per package the
 resolved source path, HEAD and a hash of uncommitted changes, and for the env
 the builder, settings, package set, =spack.lock= and profile.  =status= and
 =build --stale-only= compare against it.  Changed settings reconfigure; a
-changed =spack.lock= or profile wipes the build directory.
+source whose path changed (a ref switch) reconfigures with its package build
+directory removed; a changed =spack.lock= or profile wipes the build
+directory.
 
 The venv is stale only when its python version, requirements, python source
 set or a source's packaging metadata change: sources are editable installs

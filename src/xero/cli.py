@@ -205,16 +205,20 @@ def branch() -> None:
 
 @branch.command("add")
 @click.option("--submodules", is_flag=True, help="init submodules in the new worktree")
+@click.option("--new", "base", metavar="BASE", help="create REF as a new branch starting at BASE")
 @click.argument("repo_name")
 @click.argument("ref")
 @click.pass_context
-def branch_add(ctx, submodules, repo_name, ref) -> None:
+def branch_add(ctx, submodules, base, repo_name, ref) -> None:
     """Make a worktree of REPO_NAME at REF (branch, tag or sha)."""
     area = _area(ctx)
     path = area.branch_path(repo_name, ref)
     if path.exists():
         die(f"already exists: {path}")
-    gitops.add_worktree(area.require_repo(repo_name), path, ref, submodules=submodules)
+    repo = area.require_repo(repo_name)
+    if base:
+        gitops.create_branch(repo, ref, base)
+    gitops.add_worktree(repo, path, ref, submodules=submodules)
 
 
 @branch.command("list")
@@ -308,10 +312,12 @@ def topic_add(ctx, topic_name, repo_name, mode, kind, envs, path, submodules, re
 @topic.command("set-ref")
 @topic_opt
 @click.option("--ref-only", "ref_only", is_flag=True, help="change a refs/ entry")
+@click.option("--new", "new", is_flag=True, help="create REF as a new branch (see --base)")
+@click.option("--base", help="with --new: start the branch here (default: the current ref)")
 @click.argument("name")
 @click.argument("ref")
 @click.pass_context
-def topic_set_ref(ctx, topic_name, ref_only, name, ref) -> None:
+def topic_set_ref(ctx, topic_name, ref_only, new, base, name, ref) -> None:
     """Point a topic's NAME at REF (makes the worktree if needed)."""
     area = _area(ctx)
     t = _topic(area, topic_name)
@@ -319,6 +325,13 @@ def topic_set_ref(ctx, topic_name, ref_only, name, ref) -> None:
     tab = (t.doc.get(section) or {}).get(name)
     if tab is None:
         die(f"topic '{t.name}' has no [{section}.{name}]")
+    ent = t.entries(section)[name]
+    if new:
+        if ent.mode == "dir":
+            die(f"[{section}.{name}] is a dir entry; --new needs a repo")
+        gitops.create_branch(area.require_repo(ent.repo), ref, base or ent.ref)
+    elif base:
+        die("--base needs --new")
     tab["ref"] = ref
     t.save()
     _print_notes(sync.sync(Topic(area, t.name)))
@@ -343,6 +356,32 @@ def topic_rm(ctx, topic_name, ref_only, name) -> None:
         path.unlink()
     elif path.exists():
         say(f"left {path} in place (not a symlink); remove it yourself if wanted")
+
+
+@topic.command("env-add")
+@topic_opt
+@click.option("--builder", type=click.Choice(BUILDERS), default="superbuild", show_default=True)
+@click.argument("env_name")
+@click.pass_context
+def topic_env_add(ctx, topic_name, builder, env_name) -> None:
+    """Add Spack env ENV_NAME to a topic (or change its builder)."""
+    area = _area(ctx)
+    t = _topic(area, topic_name)
+    t.set_env(env_name, builder)
+    _print_notes(sync.sync(Topic(area, t.name)))
+
+
+@topic.command("env-rm")
+@topic_opt
+@click.argument("env_name")
+@click.pass_context
+def topic_env_rm(ctx, topic_name, env_name) -> None:
+    """Remove Spack env ENV_NAME from a topic (envs/<env>/ is left in place)."""
+    area = _area(ctx)
+    t = _topic(area, topic_name)
+    t.remove_env(env_name)
+    if t.env_root(env_name).exists():
+        say(f"left {t.env_root(env_name)} in place; remove it yourself if wanted")
 
 
 # --- sync / status / check / gc --------------------------------------------------------
@@ -495,6 +534,23 @@ def run_cmd(ctx, topic_name, env_name, command) -> None:
     if not exe:
         die(f"command not found in topic environment: {command[0]}")
     os.execve(exe, list(command), env)
+
+
+@cli.command("shell")
+@topic_opt
+@env_opt
+@click.pass_context
+def shell_cmd(ctx, topic_name, env_name) -> None:
+    """Start $SHELL in a topic's environment (exit it to leave)."""
+    area = _area(ctx)
+    t = _topic(area, topic_name)
+    e = _env(area, t, env_name, required=False)
+    environ.describe_missing_venv(t)
+    env = environ.compute(t, e, purpose="run")
+    env["XERO_SHELL"] = f"{t.name}/{e}" if e else t.name
+    sh = os.environ.get("SHELL", "/bin/sh")
+    say(f"entering {env['XERO_SHELL']}; exit to leave")
+    os.execve(sh, [sh], env)
 
 
 # --- build --------------------------------------------------------------------------------

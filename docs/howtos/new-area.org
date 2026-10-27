@@ -1,0 +1,23 @@
+#+title: Make a new area
+
+Reuse an existing area's Spack builds (=extern/= becomes a symlink):
+
+#+begin_src shell
+  xero init --extern ~/dune/xerosere/extern ~/dune/xero
+  cd ~/dune/xero
+  $EDITOR xero.toml        # per-env profiles under [envs.<E>]
+#+end_src
+
+Minimal env profile:
+
+#+begin_src toml
+  [envs.gcc15]
+  cxx_standard = "23"
+#+end_src
+
+Optionally track the area itself (the generated =.gitignore= keeps only
+=xero.toml= and =topics/*/topic.toml=):
+
+#+begin_src shell
+  git init && git add -A && git commit -m "new xero area"
+#+end_src

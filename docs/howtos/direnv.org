@@ -1,0 +1,29 @@
+#+title: Use direnv
+
+Each =topics/T/envs/E/run/= has a generated =.envrc=:
+
+#+begin_src shell
+  cd topics/T/envs/E/run
+  direnv allow
+#+end_src
+
+Any other directory (eg a work dir of your own):
+
+#+begin_src shell
+  echo 'eval "$(xero env -t T -e E)"' > .envrc
+  direnv allow
+#+end_src
+
+Or add to =~/.config/direnv/direnvrc=:
+
+#+begin_src shell
+  use_xero() { eval "$(xero env --shell bash "$@")"; }
+#+end_src
+
+then in a =.envrc=:
+
+#+begin_src shell
+  use xero -t T -e E
+#+end_src
+
+=xero sync -t T= regenerates the =run/.envrc= files.

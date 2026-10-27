@@ -1,0 +1,47 @@
+#+title: Add a source (or reference) to a topic
+
+Shared worktree (the default): =source/R -> branches/R/<ref>=
+
+#+begin_src shell
+  xero topic add -t T R main
+  xero topic add -t T R v1.2.3             # tag: detached worktree
+#+end_src
+
+Different entry name than repo name:
+
+#+begin_src shell
+  xero topic add -t T --repo wire-cell-toolkit wct my-branch
+#+end_src
+
+Private full clone in =source/= (not shared; good for submodules):
+
+#+begin_src shell
+  xero topic add -t T --mode clone --submodules R my-branch
+#+end_src
+
+Plain directory, or a link to one:
+
+#+begin_src shell
+  xero topic add -t T --mode dir scratch
+  xero topic add -t T --mode dir --path ~/some/src R
+#+end_src
+
+Python package (detected from =pyproject.toml=; goes into =topics/T/venv=):
+
+#+begin_src shell
+  xero topic add -t T wire-cell-python master
+  xero build -t T
+#+end_src
+
+Read-only reference (=refs/=, never built):
+
+#+begin_src shell
+  xero topic add -t T --ref-only dunecore v10_26_00d03
+#+end_src
+
+Remove:
+
+#+begin_src shell
+  xero topic rm -t T R
+  xero topic rm -t T --ref-only dunecore
+#+end_src
