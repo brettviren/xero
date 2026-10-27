@@ -81,7 +81,52 @@ def _print_notes(notes) -> None:
 # --- top level ----------------------------------------------------------------
 
 
-@click.group(context_settings={"help_option_names": ["-h", "--help"]})
+def _implied_topic() -> bool:
+    """True if a topic is implied without -t: XERO_TOPIC or cwd inside topics/<t>/."""
+    if os.environ.get("XERO_TOPIC"):
+        return True
+    try:
+        area = Area.find()
+    except Die:
+        return False
+    return topic_from_cwd(area)[0] is not None
+
+
+class XeroCommand(click.Command):
+    """A command whose bare invocation (no arguments) shows its help.
+
+    Exceptions are declared per command with ``bare=``:
+      "always"  run with no arguments (eg listings, area-wide checks)
+      "topic"   run with no arguments only when a topic is implied (cwd or
+                XERO_TOPIC), else show help
+    """
+
+    def __init__(self, *args, bare: str | None = None, **kwargs) -> None:
+        kwargs.setdefault("no_args_is_help", True)
+        super().__init__(*args, **kwargs)
+        self.bare = bare
+
+    def _bare_ok(self) -> bool:
+        return self.bare == "always" or (self.bare == "topic" and _implied_topic())
+
+    def parse_args(self, ctx: click.Context, args: list[str]) -> list[str]:
+        if args or not self.no_args_is_help or not self._bare_ok():
+            return super().parse_args(ctx, args)
+        self.no_args_is_help = False
+        try:
+            return super().parse_args(ctx, args)
+        finally:
+            self.no_args_is_help = True
+
+
+class XeroGroup(click.Group):
+    """Makes every command (and sub-group) bare-is-help by default."""
+
+    command_class = XeroCommand
+    group_class = type  # sub-groups are XeroGroups too
+
+
+@click.group(cls=XeroGroup, context_settings={"help_option_names": ["-h", "--help"]})
 @click.pass_context
 def cli(ctx: click.Context) -> None:
     """Manage topic-oriented development areas."""
@@ -90,7 +135,7 @@ def cli(ctx: click.Context) -> None:
 @cli.command()
 @click.option("--extern", "extern", type=click.Path(path_type=Path),
               help="make extern/ a symlink to this directory (eg another area's extern/)")
-@click.argument("directory", type=click.Path(path_type=Path), default=".")
+@click.argument("directory", type=click.Path(path_type=Path))
 def init(extern, directory) -> None:
     """Initialize (or complete) a xero area in DIRECTORY."""
     root = directory.absolute()
@@ -173,7 +218,7 @@ def repo_remote(ctx, fetch, name, remote, url) -> None:
         run(["git", "fetch", "--tags", remote], cwd=bare)
 
 
-@repo.command("list")
+@repo.command("list", bare="always")
 @click.pass_context
 def repo_list(ctx) -> None:
     """List registered repos."""
@@ -186,12 +231,15 @@ def repo_list(ctx) -> None:
 
 
 @repo.command("fetch")
+@click.option("--all", "all_", is_flag=True, help="fetch every repo")
 @click.argument("names", nargs=-1)
 @click.pass_context
-def repo_fetch(ctx, names) -> None:
-    """Fetch all remotes of NAMES (default: all repos)."""
+def repo_fetch(ctx, all_, names) -> None:
+    """Fetch all remotes of repos NAMES (or --all repos)."""
     area = _area(ctx)
-    for name in names or sorted(area.repos()):
+    if all_ and names:
+        die("give repo NAMES or --all, not both")
+    for name in sorted(area.repos()) if all_ else names:
         run(["git", "fetch", "--all", "--tags", "--prune"], cwd=area.require_repo(name))
 
 
@@ -221,7 +269,7 @@ def branch_add(ctx, submodules, base, repo_name, ref) -> None:
     gitops.add_worktree(repo, path, ref, submodules=submodules)
 
 
-@branch.command("list")
+@branch.command("list", bare="always")
 @click.argument("repo_name", required=False)
 @click.pass_context
 def branch_list(ctx, repo_name) -> None:
@@ -263,7 +311,7 @@ def topic_new(ctx, envs, builder, description, name) -> None:
     say(f"topic {name}: {t.file}")
 
 
-@topic.command("list")
+@topic.command("list", bare="always")
 @click.pass_context
 def topic_list(ctx) -> None:
     """List topics."""
@@ -393,7 +441,7 @@ def _topics(area: Area, name: str | None, all_: bool) -> list[Topic]:
     return [_topic(area, name)]
 
 
-@cli.command("sync")
+@cli.command("sync", bare="topic")
 @topic_opt
 @click.option("--all", "all_", is_flag=True, help="all topics")
 @click.option("-n", "--dry-run", is_flag=True, help="only report")
@@ -433,7 +481,7 @@ def _print_report(t: Topic, rep: dict) -> int:
     return problems
 
 
-@cli.command()
+@cli.command(bare="topic")
 @topic_opt
 @click.option("--all", "all_", is_flag=True, help="all topics")
 @click.pass_context
@@ -444,7 +492,7 @@ def status(ctx, topic_name, all_) -> None:
         _print_report(t, check.topic_report(t))
 
 
-@cli.command("check")
+@cli.command("check", bare="always")
 @click.pass_context
 def check_cmd(ctx) -> None:
     """Check every topic and worktree; exit 1 if anything needs attention."""
@@ -473,7 +521,7 @@ def check_cmd(ctx) -> None:
     sys.exit(1 if problems else 0)
 
 
-@cli.command()
+@cli.command(bare="always")
 @click.option("--remove", is_flag=True, help="actually remove the collectable worktrees")
 @click.pass_context
 def gc(ctx, remove) -> None:
@@ -497,7 +545,7 @@ def gc(ctx, remove) -> None:
 # --- environment ------------------------------------------------------------------------
 
 
-@cli.command("env")
+@cli.command("env", bare="topic")
 @topic_opt
 @env_opt
 @click.option("--shell", type=click.Choice(["bash", "fish"]), default="bash", show_default=True)
@@ -536,7 +584,7 @@ def run_cmd(ctx, topic_name, env_name, command) -> None:
     os.execve(exe, list(command), env)
 
 
-@cli.command("shell")
+@cli.command("shell", bare="topic")
 @topic_opt
 @env_opt
 @click.pass_context
@@ -556,7 +604,7 @@ def shell_cmd(ctx, topic_name, env_name) -> None:
 # --- build --------------------------------------------------------------------------------
 
 
-@cli.command()
+@cli.command(bare="topic")
 @topic_opt
 @env_opt
 @click.option("--all", "all_", is_flag=True, help="all topics (and all their envs)")

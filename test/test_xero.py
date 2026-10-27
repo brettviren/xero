@@ -262,3 +262,18 @@ def test_build_after_ref_switch(xero, upstreams, builder):
     invoke("build", "-t", "t1")
     assert (t.install_dir("fake") / "share" / "beta" / "data.txt").read_text() == "from work\n"
     assert "env fake: ok" in invoke("status", "-t", "t1").output
+
+
+def test_bare_invocation_is_help(xero, upstreams, monkeypatch):
+    invoke, area = xero
+    for args in ([], ["init"], ["repo"], ["repo", "fetch"], ["topic", "add"], ["status"], ["build"], ["env"]):
+        res = invoke(*args, ok=False)
+        assert "Usage:" in res.output, args
+    assert "Usage:" not in invoke("topic", "list").output
+    assert "Usage:" not in invoke("gc").output
+    invoke("topic", "new", "t1", "-e", "fake")
+    t = Topic(area, "t1")
+    monkeypatch.chdir(t.env_root("fake"))
+    monkeypatch.setenv("PWD", str(t.env_root("fake")))
+    res = invoke("status")
+    assert "Usage:" not in res.output and "topic t1" in res.output

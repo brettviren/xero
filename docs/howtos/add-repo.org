@@ -23,6 +23,6 @@ Add a personal fork remote:
 Update and inspect:
 
 #+begin_src shell
-  xero repo fetch R        # or: xero repo fetch   (all repos)
+  xero repo fetch R        # or: xero repo fetch --all
   xero repo list
 #+end_src

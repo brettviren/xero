@@ -58,8 +58,12 @@ omitted.  =XERO_TOPIC= and =XERO_ENV= also select them.
 
 * Commands
 
+A command given no arguments prints its help, except =check=, =gc= and the
+=list= commands (which run), and =status=, =sync=, =build=, =env= and =shell=,
+which run when a topic is implied (cwd inside =topics/<t>/= or =XERO_TOPIC=).
+
 - =init= :: make or complete an area; =--extern= links an existing extern/.
-- =repo add|list|fetch= :: bare repos.  =repo add --from <clone>= converts an
+- =repo add|list|fetch|remote= :: bare repos.  =repo add --from <clone>= converts an
   existing clone, carrying its local branches (stashes are not carried).
 - =branch add|list= :: worktrees, with the topics that use them.
 - =topic new|list|add|set-ref|rm|env-add|env-rm= :: edit =topic.toml= and
